@@ -1,0 +1,86 @@
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index c84d12608cd2..e037baa7af31 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -372,6 +372,7 @@
+ 448	common	process_mrelease	sys_process_mrelease
+ 449	common	futex_waitv		sys_futex_waitv
+ 450	common	set_mempolicy_home_node	sys_set_mempolicy_home_node
++470 64      decode_insn         sys_decode_insn
+ 
+ #
+ # Due to a historical design error, certain syscalls are numbered differently
+diff --git a/arch/x86/kernel/Makefile b/arch/x86/kernel/Makefile
+index 96d51bbc2bd4..085ff4ba8562 100644
+--- a/arch/x86/kernel/Makefile
++++ b/arch/x86/kernel/Makefile
+@@ -140,6 +140,7 @@ obj-$(CONFIG_UNWINDER_FRAME_POINTER)	+= unwind_frame.o
+ obj-$(CONFIG_UNWINDER_GUESS)		+= unwind_guess.o
+ 
+ obj-$(CONFIG_AMD_MEM_ENCRYPT)		+= sev.o
++obj-$(CONFIG_INSTRUCTION_DECODER)   += insn_syscalls.o
+ 
+ obj-$(CONFIG_CFI_CLANG)			+= cfi.o
+ 
+diff --git a/arch/x86/kernel/insn_syscalls.c b/arch/x86/kernel/insn_syscalls.c
+new file mode 100644
+index 000000000000..7144a97a98f3
+--- /dev/null
++++ b/arch/x86/kernel/insn_syscalls.c
+@@ -0,0 +1,32 @@
++/*
++ * System calls implementing x86 instruction decoding for fuzzing purpose.
++ *
++ */
++
++#include <asm/current.h>
++#include <asm/insn.h>
++#include <asm/vm86.h>
++#include <linux/compiler_types.h>
++#include <linux/mmu_context.h>
++#include <linux/syscalls.h>
++
++SYSCALL_DEFINE2(decode_insn, unsigned char __user *, user_insn_buf,
++		struct insn __user *, decoded_insn)
++{
++	struct insn insn;
++	unsigned char insn_buf[MAX_INSN_SIZE] = { 0 };
++	int ret;
++
++	if (copy_from_user(&insn_buf, user_insn_buf, sizeof(insn_buf)))
++		return -EFAULT;
++
++	ret = insn_decode(&insn, insn_buf, sizeof(insn_buf), INSN_MODE_64);
++	if (ret < 0)
++		goto out;
++
++	if (copy_to_user(decoded_insn, &insn, sizeof(*decoded_insn)))
++		return -EFAULT;
++
++out:
++	return ret;
++}
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 33a0ee3bcb2e..99353146c8ad 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -1388,3 +1388,5 @@ int __sys_getsockopt(int fd, int level, int optname, char __user *optval,
+ int __sys_setsockopt(int fd, int level, int optname, char __user *optval,
+ 		int optlen);
+ #endif
++
++asmlinkage long sys_decode_insn(struct pt_regs *regs);
+diff --git a/include/uapi/asm-generic/unistd.h b/include/uapi/asm-generic/unistd.h
+index 45fa180cc56a..fa2278114c98 100644
+--- a/include/uapi/asm-generic/unistd.h
++++ b/include/uapi/asm-generic/unistd.h
+@@ -889,6 +889,9 @@ __SYSCALL(__NR_set_mempolicy_home_node, sys_set_mempolicy_home_node)
+ #undef __NR_syscalls
+ #define __NR_syscalls 451
+ 
++#define __NR_decode_insn 470
++__SYSCALL(__NR_decode_insn, sys_decode_insn)
++
+ /*
+  * 32 bit systems traditionally used different
+  * syscalls for off_t and loff_t arguments, while
