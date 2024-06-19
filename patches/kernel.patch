@@ -33,7 +33,6 @@ index 000000000000..8a52bfaf2755
 + *
 + */
 +
-+#include "linux/page-flags.h"
 +#include <asm/current.h>
 +#include <asm/insn.h>
 +#include <asm/vm86.h>
