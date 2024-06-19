@@ -24,15 +24,16 @@ index 96d51bbc2bd4..085ff4ba8562 100644
  
 diff --git a/arch/x86/kernel/insn_syscalls.c b/arch/x86/kernel/insn_syscalls.c
 new file mode 100644
-index 000000000000..7144a97a98f3
+index 000000000000..8a52bfaf2755
 --- /dev/null
 +++ b/arch/x86/kernel/insn_syscalls.c
-@@ -0,0 +1,32 @@
+@@ -0,0 +1,35 @@
 +/*
 + * System calls implementing x86 instruction decoding for fuzzing purpose.
 + *
 + */
 +
++#include "linux/page-flags.h"
 +#include <asm/current.h>
 +#include <asm/insn.h>
 +#include <asm/vm86.h>
@@ -45,20 +46,22 @@ index 000000000000..7144a97a98f3
 +{
 +	struct insn insn;
 +	unsigned char insn_buf[MAX_INSN_SIZE] = { 0 };
-+	int ret;
++	int err;
 +
 +	if (copy_from_user(&insn_buf, user_insn_buf, sizeof(insn_buf)))
-+		return -EFAULT;
++		goto err;
 +
-+	ret = insn_decode(&insn, insn_buf, sizeof(insn_buf), INSN_MODE_64);
-+	if (ret < 0)
-+		goto out;
++	err = insn_decode(&insn, insn_buf, sizeof(insn_buf), INSN_MODE_64);
++	if (err < 0)
++		goto err;
 +
 +	if (copy_to_user(decoded_insn, &insn, sizeof(*decoded_insn)))
-+		return -EFAULT;
++		goto err;
 +
-+out:
-+	return ret;
++	return 0;
++
++err:
++	return -EFAULT;
 +}
 diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
 index 33a0ee3bcb2e..99353146c8ad 100644
